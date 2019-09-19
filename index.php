@@ -88,6 +88,7 @@ if( $client != false )  {
     $ui = '';
 
 
+    if( !in_array( $action, array( 'openfile' ) ) ) {
 
         /**
          * Get Data from DB
@@ -160,6 +161,189 @@ if( $client != false )  {
                         ."://{$_SERVER['HTTP_HOST']}{$_SERVER['SCRIPT_NAME']}".'?'.http_build_query($link_params)
                     .'">Start Export</a>';
         }
+    }
+    
+    if( $action == 'export' ) {
+        /**
+         * Get Data from API/Shopware
+         */
+        $oOrders= '';
+        $params = ['filter'=>[
+                        [
+                            'property' => 'id' ,
+                            'expression' => '>' ,
+                            'value' => $lastorderid
+                        ],
+                        [
+                            'property' => 'number' ,
+                            'expression' => '!=' ,
+                            'value' => 0
+                        ]
+                    ]
+                ];
+        $oOrders_x = $client->get( 'orders', $params );
+
+        $oOrders = json_decode( $oOrders_x, true );
+
+        if( (int)$oOrders['total']  > 0
+            && $oOrders['success'] == 1 ) {
+            /** 
+             * Create Item in DB
+             */
+            $result = $sqlhandle->query( 'INSERT INTO cp_order_export ( lastOrderId ) VALUES ( ' . $lastorderid . ' )' );
+            $resultDBid = $sqlhandle->insert_id;
+            
+            if( $sqlhandle->error ) {
+                file_put_contents( $logDir . '_error.log', "stmt-Error:\n" . $sqlhandle->error . "\n", FILE_APPEND );
+                printf("Error: %s.<br>\n", $sqlhandle->error);
+                die();
+            }
+
+            /**
+             * Create seperate Log
+             */
+            $logfile = $logDir . 'log_' . $resultDBid . '.log';
+            if( !file_exists( $logfile ) ) {
+                file_put_contents( $logfile, "" );
+            }
+            file_put_contents( $logfile, "Orders Total: " . $oOrders['total'] . "\n", FILE_APPEND );
+            echo '<h1>Export:</h1>';
+            echo '<pre>total: ' . print_r( $oOrders['total'] , true ) . '</pre>';
+            echo '<pre>success: ' . print_r( $oOrders['success'] , true ) . '</pre>';
+
+            /**
+             * create export-file
+             */
+            $exportFile = $exportDir . 'export_' . $resultDBid . '.csv';
+            $fp = fopen( $exportFile, 'a' );
+            if( !file_exists( $exportFile ) ) {
+                fputcsv( $fp, $csvTitle, $csv_sep );
+            }
+            file_put_contents( $logfile, "Exported File: " . $exportFile . "\n", FILE_APPEND );
+
+            /** 
+             * Put TitleLine to CSV-File
+             */
+            foreach( $oOrders['data'] AS $orderData ) {
+                $params = ['filter'=>[[
+                                'property' => 'id' ,
+                                'expression' => '>' ,
+                                'value' => $lastorderid
+                            ]],
+                            'sort' => [
+                                ['property' => 'id']
+                            ]
+                        ];
+                $row =  json_decode( $client->get('orders/' . $orderData['id'], $params), true );
+
+                file_put_contents( $logfile, "Start Order: " . $orderData['id']
+                                            . "\n----------------------------------------\n", FILE_APPEND );
+
+                if( !$row["success"] ) {
+                    file_put_contents( $logfile, $row["message"] . "\n\n", FILE_APPEND );
+                    continue;
+                }
+                else {
+                    $row = $row["data"];
+
+                    /**
+                     * Mapping
+                     */
+                    $position = array();
+                    // prepare Line  
+                    foreach( $csvTitle as $t => $n ) {
+                        $position[$t] = '';
+                    }
+                    
+                    // $position['empty-1'] = $row["id"];
+                    $position['Bestell-ID'] = $row["number"];
+                    $position['Rechnungsdatum'] = date( 'Y.m.d H:i:s', strtotime( $row['orderTime'] ) ) ;
+
+                    // Billig
+                    $position['b_Firma'] = $row['billing']['company'] . ( $row['shipping']['department'] ? ' - '.$row['shipping']['department'] : '' );
+                    $position['b_Name'] = $row['billing']['lastName'];
+                    $position['b_Vorname'] = $row['billing']['firstName'];
+                    $position['b_Strasse'] = $row['billing']['street'];
+                    $position['b_PLZ'] = $row['billing']['zipCode'];
+                    $position['b_Ort'] = $row['billing']['city'];
+                    $position['b_Land'] = $row['billing']['country']['isoName'];
+                    $position['b_Telefon'] = $row['billing']['phone'];
+                    // Billig Extras
+                    $position['Mailadresse'] = $row['customer']["email"]; // OK? 
+                    $position['VAT ID'] = $row['billing']['vatId'];
+                    $position['Zahlungsart'] = $row['payment']['name'];
+                    
+                    // Shipping
+                    $position['s_Firma'] = $row['shipping']['company'] . ( $row['shipping']['department'] ? ' - '.$row['shipping']['department'] : '' );
+                    $position['s_Name'] = $row['shipping']['lastName'];
+                    $position['s_Vorname'] = $row['shipping']['firstName'];
+                    $position['s_Strasse'] = $row['shipping']['street'];
+                    $position['s_PLZ'] = $row['shipping']['zipCode'];
+                    $position['s_Ort'] = $row['shipping']['city'];
+                    $position['s_Land'] = $row['shipping']['country']['isoName'];
+                    $position['s_Telefon'] = $row['shipping']['phone'];
+
+                    // Product
+                    for( $details_i = 0, $details_len = count( $row['details'] ) ; $details_i < $details_len ; $details_i++ ) {
+                        $details_row = $row['details'][ $details_i ];
+
+                        $position['p_Anzahl'] = $details_row['quantity']; // * Units in Pack
+                        $position['Projectname'] = $details_row['articleName'];
+                        $position['p_Produktbezeichnung'] = $details_row['articleName'];
+                        $position['p_Material'] = '';
+                        $position['p_Einzelpreis'] = $details_row['price'];
+                        $position['p_Summe'] = $details_row['price'];
+
+                        /** 
+                         * Put Position to CSV-File
+                         */
+                        fputcsv( $fp, $position, $csv_sep );
+                        file_put_contents( $logfile, $position['p_Produktbezeichnung'] . ' ( ' . $position['p_Anzahl'] . ' )' . "\n", FILE_APPEND );
+                    }
+                }
+
+                // Update DB Item
+                $sqlhandle->query( "UPDATE cp_order_export SET lastOrderId = " . $row["id"] . " WHERE id = " . $resultDBid . ";" );
+                file_put_contents( $logfile, "----------------------------------------\n\n", FILE_APPEND );
+
+            }
+
+            fclose( $fp );
+
+            $ui.= '<div style="overflow:scroll; height: 250px; ">'
+            
+            . '<table><tr><td nowrap>'
+                . str_replace( "\n", '</td></tr><tr><td nowrap>', str_replace( ";", '</td><td nowrap>', file_get_contents( substr( $exportFile, 2 ) ) ) )
+            . '</td></tr></table>'
+            
+            . '</div>';
+            $ui.= '<pre>' . print_r( $csvTitle, true ) . '</pre>';
+            $ui.= '<br><br><br>';
+            $ui.= '<pre>' . print_r( $row, true ) . '</pre>';
+        }
+    }
+    else if( $action == 'openfile' ) {
+
+        $file = $exportDir . 'export_' . (int)$_REQUEST['file'] .'.csv';
+        
+        file_put_contents( $logfile, 'Export over UI at ' . date( 'Y.m.d H:i:s' ) . "\n\n", FILE_APPEND );
+        
+        // Export File
+        header('Content-Type: text/csv');
+        echo file_get_contents( $file );
+        die();
+    }
+    else if( $action == 'openlog' ) {
+
+        $file = $logDir . 'log_' . (int)$_REQUEST['file'] .'.log';
+        
+        file_put_contents( $file, 'Show Log at ' . date( 'Y.m.d H:i:s' ) . "\n\n", FILE_APPEND );
+        
+        // Export File
+        echo file_get_contents( $file );
+        die();
+    }
+
     $tplAreas['ui'] = array();
     $tplAreas['ui'][] = $ui;
 }
