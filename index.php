@@ -159,7 +159,7 @@ if( $client != false )  {
             $ui.= '<a href="'.
                         (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS']==='on'?"https":"http")
                         ."://{$_SERVER['HTTP_HOST']}{$_SERVER['SCRIPT_NAME']}".'?'.http_build_query($link_params)
-                    .'">Start Export</a>';
+                    .'"class="btn btn-primary mt-3">Start Export</a>';
         }
     }
     
