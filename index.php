@@ -88,6 +88,78 @@ if( $client != false )  {
     $ui = '';
 
 
+
+        /**
+         * Get Data from DB
+         */
+        $sql = "SELECT
+                *
+            FROM
+                cp_order_export
+            ORDER by
+                lastOrderId ASC";
+
+        $result = $sqlhandle->query($sql);
+        
+        if( $result->num_rows > 0 ) {
+            // output data of each row
+            $ui.= '<table width="100%">'
+                    . "<tr>"
+                        . "<td>id</td>"
+                        . "<td>timestamp</td>"
+                        . "<td>lastOrderId</td>"
+                        . "<td>Log</td>"
+                    . "</tr>";
+            while( $row = $result->fetch_assoc() ) {
+
+                $link_params = array(
+                    'action' => 'openfile' ,
+                    'file' => $row["id"] ,
+                    'resturl' => $_REQUEST['resturl'] ,
+                    'restuser' => $_REQUEST['restuser'] ,
+                    'restkey' => $_REQUEST['restkey']
+                );
+
+                $log_params = array(
+                    'action' => 'openlog' ,
+                    'file' => $row["id"] ,
+                    'resturl' => $_REQUEST['resturl'] ,
+                    'restuser' => $_REQUEST['restuser'] ,
+                    'restkey' => $_REQUEST['restkey']
+                );
+
+                $ui.= "<tr>"
+                        ."<td nowrap>". $row["id"] ."</td>"
+                        .'<td nowrap><a target="_blank" href="'.
+                        
+                        (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS']==='on'?"https":"http")
+                        ."://{$_SERVER['HTTP_HOST']}{$_SERVER['SCRIPT_NAME']}".'?'.http_build_query($link_params)
+
+                        .'">'. $row["timestamp"] ."</a></td>"
+                        ."<td nowrap>". $row["lastOrderId"] ."</td>"
+                        .'<td nowrap><a target="_blank" href="'.
+                        
+                        (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS']==='on'?"https":"http")
+                        ."://{$_SERVER['HTTP_HOST']}{$_SERVER['SCRIPT_NAME']}".'?'.http_build_query($log_params)
+
+                        .'">Link'."</a></td>"
+                    . "</tr>";
+                $lastid = $row["id"];
+                $lastorderid = $row["lastOrderId"];
+            }
+            $ui.= '</table>';
+
+            $link_params = array(
+                'action' => 'export' ,
+                'resturl' => $_REQUEST['resturl'] ,
+                'restuser' => $_REQUEST['restuser'] ,
+                'restkey' => $_REQUEST['restkey']
+            );
+            $ui.= '<a href="'.
+                        (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS']==='on'?"https":"http")
+                        ."://{$_SERVER['HTTP_HOST']}{$_SERVER['SCRIPT_NAME']}".'?'.http_build_query($link_params)
+                    .'">Start Export</a>';
+        }
     $tplAreas['ui'] = array();
     $tplAreas['ui'][] = $ui;
 }
