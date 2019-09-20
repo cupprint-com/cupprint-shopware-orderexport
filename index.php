@@ -206,7 +206,16 @@ if( $client != false )  {
             if( !file_exists( $logfile ) ) {
                 file_put_contents( $logfile, "" );
             }
-            file_put_contents( $logfile, "Orders Total: " . $oOrders['total'] . "\n", FILE_APPEND );
+            
+            $log = '_REQUEST:' . "\n";
+            foreach( $_REQUEST AS $key => $value ) {
+                if( $key != 'restkey' ) {
+                    $log.= $key . ': ' . $value . "\n";
+                }
+            }
+            $log.= "Orders Total: " . $oOrders['total'] . "\n";
+
+            file_put_contents( $logfile, $log, FILE_APPEND );
             echo '<h1>Export:</h1>';
             echo '<pre>total: ' . print_r( $oOrders['total'] , true ) . '</pre>';
             echo '<pre>success: ' . print_r( $oOrders['success'] , true ) . '</pre>';
@@ -323,24 +332,23 @@ if( $client != false )  {
         }
     }
     else if( $action == 'openfile' ) {
+        $logfile = $logDir . 'log_' . (int)$_REQUEST['file'] .'.log';
+        file_put_contents( $logfile, 'Export over UI at ' . date( 'Y.m.d H:i:s' ) . ' - ' . $_REQUEST['restuser'] . "\n\n", FILE_APPEND );
 
         $file = $exportDir . 'export_' . (int)$_REQUEST['file'] .'.csv';
         
-        file_put_contents( $logfile, 'Export over UI at ' . date( 'Y.m.d H:i:s' ) . "\n\n", FILE_APPEND );
-        
         // Export File
         header('Content-Type: text/csv');
+        header('Content-Disposition: attachment; filename="'.('export_' . (int)$_REQUEST['file'] .'.csv').'"');
         echo file_get_contents( $file );
         die();
     }
     else if( $action == 'openlog' ) {
-
-        $file = $logDir . 'log_' . (int)$_REQUEST['file'] .'.log';
-        
-        file_put_contents( $file, 'Show Log at ' . date( 'Y.m.d H:i:s' ) . "\n\n", FILE_APPEND );
+        $logfile = $logDir . 'log_' . (int)$_REQUEST['file'] .'.log';
+        file_put_contents( $logfile, 'Show Log at ' . date( 'Y.m.d H:i:s' ) . ' - ' . $_REQUEST['restuser'] . "\n\n", FILE_APPEND );
         
         // Export File
-        echo file_get_contents( $file );
+        echo nl2br(file_get_contents( $logfile ));
         die();
     }
 
