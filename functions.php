@@ -45,3 +45,23 @@ function is_session_started()
     
     return FALSE;
 }
+
+/**
+* @return string
+*/
+function getLink( $link = '', $action = '' )
+{
+    if( strpos( $link , '?' ) >= 0 ) {
+        $link.= '&';
+    }
+    else {
+        $link.= '?';
+    }
+
+    $link.= 'action=' . $action
+          . '&resturl=' . urlencode( $this->apiUrl ) 
+          . '&restuser=' . urlencode( $this->username ) 
+          . '&restkey=' . urlencode( $this->apiKey ) ;
+    
+    return $link;
+}
