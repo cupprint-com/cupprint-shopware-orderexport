@@ -89,6 +89,26 @@ class ApiClient
         return $r['data'][0];
     }
     
+    
+    public function getOrdersWithNumberbeginId( $lastorderid )
+    {
+        $params = ['filter'=>[
+                        [
+                            'property' => 'id' ,
+                            'expression' => '>' ,
+                            'value' => $lastorderid
+                        ],
+                        [
+                            'property' => 'number' ,
+                            'expression' => '!=' ,
+                            'value' => 0
+                        ]
+                    ]
+                ];
+
+        return json_decode( $this->get( 'orders',$params ), true );
+    }
+    
     public function getArticlePricesbyArticleNo( $detailNumber )
     {
         $params = [ 'filter' => [ 
