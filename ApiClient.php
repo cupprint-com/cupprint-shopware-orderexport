@@ -76,6 +76,19 @@ class ApiClient
         return $r['data'][0];
     }
     
+    public function getUserbyUserName( $userName )
+    {
+        $params = [ 'filter' => [ [
+            'property' => 'username',
+            'expression' => '=',
+            'value' => $userName
+        ] ] ];
+
+        $r = json_decode( $this->get( 'users', $params ), true );
+        
+        return $r['data'][0];
+    }
+    
     public function getArticlePricesbyArticleNo( $detailNumber )
     {
         $params = [ 'filter' => [ 
