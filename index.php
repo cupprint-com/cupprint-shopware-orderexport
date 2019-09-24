@@ -57,17 +57,12 @@ $redirect = '';
 if( $restUrl != '' && $restUser != '' && $restKey != '' )  {
     // create Client
     $client = new ApiClient( $restUrl, $restUser, $restKey );
-    $oUser = '';
-    $params = [ 'filter' => [ [
-                    'property' => 'username',
-                    'expression' => '=',
-                    'value' => $restUser
-                ] ] ];
-    $oUser = json_decode( $client->get( 'users', $params ), true );
+    
+    $oUser = $client->getUserbyUserName( $restUser );
 
-    if( array_key_exists( 'total', $oUser ) && $oUser['total'] > 0 ) {
+    if( array_key_exists( 'id', $oUser ) && $oUser['id'] > 0 ) {
         $userdetails = '<div class="alert alert-success w-100 pt-2 pb-2 text-center" role="alert">'
-                            . '<b>' . $oUser['data'][0]['name'] . '</b> (' . $oUser['data'][0]['id'] . ') <a href="mailto:' . $oUser['data'][0]['email'] . '">Mail</a>'
+                            . '<b>' . $oUser['name'] . '</b> (' . $oUser['id'] . ') <a href="mailto:' . $oUser['email'] . '">Mail</a>'
                         . '</div>';
         $tplAreas['usersidebar'][] = $userdetails;
     }
@@ -167,23 +162,7 @@ if( $client != false )  {
         /**
          * Get Data from API/Shopware
          */
-        $oOrders= '';
-        $params = ['filter'=>[
-                        [
-                            'property' => 'id' ,
-                            'expression' => '>' ,
-                            'value' => $lastorderid
-                        ],
-                        [
-                            'property' => 'number' ,
-                            'expression' => '!=' ,
-                            'value' => 0
-                        ]
-                    ]
-                ];
-        $oOrders_x = $client->get( 'orders', $params );
-
-        $oOrders = json_decode( $oOrders_x, true );
+        $oOrders = $client->getOrdersWithNumberbeginId( $lastorderid );
 
         if( (int)$oOrders['total']  > 0
             && $oOrders['success'] == 1 ) {
@@ -234,16 +213,7 @@ if( $client != false )  {
              * Put TitleLine to CSV-File
              */
             foreach( $oOrders['data'] AS $orderData ) {
-                $params = ['filter'=>[[
-                                'property' => 'id' ,
-                                'expression' => '>' ,
-                                'value' => $lastorderid
-                            ]],
-                            'sort' => [
-                                ['property' => 'id']
-                            ]
-                        ];
-                $row =  json_decode( $client->get('orders/' . $orderData['id'], $params), true );
+                $row = json_decode( $client->get('orders/' . $orderData['id']), true );
 
                 file_put_contents( $logfile, "Start Order: " . $orderData['id']
                                             . "\n----------------------------------------\n", FILE_APPEND );
@@ -269,7 +239,7 @@ if( $client != false )  {
                     $position['Rechnungsdatum'] = date( 'Y.m.d H:i:s', strtotime( $row['orderTime'] ) ) ;
 
                     // Billig
-                    $position['b_Firma'] = $row['billing']['company'] . ( $row['shipping']['department'] ? ' - '.$row['shipping']['department'] : '' );
+                    $position['b_Firma'] = $row['billing']['company'] ? $row['billing']['company'] . ( $row['shipping']['department'] ? ' - '.$row['shipping']['department'] : '' )  : trim( $row['billing']['firstName'] . ' ' . $row['billing']['lastName'] );
                     $position['b_Name'] = $row['billing']['lastName'];
                     $position['b_Vorname'] = $row['billing']['firstName'];
                     $position['b_Strasse'] = $row['billing']['street'];
@@ -283,7 +253,10 @@ if( $client != false )  {
                     $position['Zahlungsart'] = $row['payment']['name'];
                     
                     // Shipping
-                    $position['s_Firma'] = $row['shipping']['company'] . ( $row['shipping']['department'] ? ' - '.$row['shipping']['department'] : '' );
+                    $position['s_Firma'] = $row['shipping']['company'] ? $row['shipping']['company'] . ( $row['shipping']['department'] ? ' - '.$row['shipping']['department'] : '' ) : '';
+
+                    $position['b_Firma'] = $row['billing']['company'] ? $row['billing']['company'] . ( $row['shipping']['department'] ? ' - '.$row['shipping']['department'] : '' )  : trim( $row['billing']['firstName'] . ' ' . $row['billing']['lastName'] );
+
                     $position['s_Name'] = $row['shipping']['lastName'];
                     $position['s_Vorname'] = $row['shipping']['firstName'];
                     $position['s_Strasse'] = $row['shipping']['street'];
@@ -292,7 +265,7 @@ if( $client != false )  {
                     $position['s_Land'] = $row['shipping']['country']['isoName'];
                     $position['s_Telefon'] = $row['shipping']['phone'];
 
-                    // Product
+                    // Basket-Product
                     for( $details_i = 0, $details_len = count( $row['details'] ) ; $details_i < $details_len ; $details_i++ ) {
                         $details_row = $row['details'][ $details_i ];
 
@@ -311,9 +284,11 @@ if( $client != false )  {
                     }
                 }
 
-                // Update DB Item
-                $sqlhandle->query( "UPDATE cp_order_export SET lastOrderId = " . $row["id"] . " WHERE id = " . $resultDBid . ";" );
-                file_put_contents( $logfile, "----------------------------------------\n\n", FILE_APPEND );
+                if( $row  && array_key_exists( "id", $row ) ) {
+                    // Update DB Item
+                    $sqlhandle->query( "UPDATE cp_order_export SET lastOrderId = " . $row["id"] . " WHERE id = " . $resultDBid . ";" );
+                    file_put_contents( $logfile, "----------------------------------------\n\n", FILE_APPEND );
+                }
 
             }
 
