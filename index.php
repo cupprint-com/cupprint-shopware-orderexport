@@ -10,6 +10,11 @@ $tplAreas = array(
     'debug' => array()
 );
 
+$cache = array();
+$cache['articles'] = array();
+
+
+
 /**
  * config & includes
  */
@@ -50,7 +55,6 @@ $debug = true;
 $redirect = '';
 
 
-
 /**
  * Check API-Access
  */
@@ -58,9 +62,10 @@ if( $restUrl != '' && $restUser != '' && $restKey != '' )  {
     // create Client
     $client = new ApiClient( $restUrl, $restUser, $restKey );
     
+
     $oUser = $client->getUserbyUserName( $restUser );
 
-    if( array_key_exists( 'id', $oUser ) && $oUser['id'] > 0 ) {
+    if( is_array( $oUser ) && array_key_exists( 'id', $oUser ) && $oUser['id'] > 0 ) {
         $userdetails = '<div class="alert alert-success w-100 pt-2 pb-2 text-center" role="alert">'
                             . '<b>' . $oUser['name'] . '</b> (' . $oUser['id'] . ') <a href="mailto:' . $oUser['email'] . '">Mail</a>'
                         . '</div>';
@@ -80,97 +85,26 @@ if( $client != false )  {
 
 
 
+    $overview = '';
     $ui = '';
 
 
-    if( !in_array( $action, array( 'openfile' ) ) ) {
-
-        /**
-         * Get Data from DB
-         */
-        $sql = "SELECT
-                *
-            FROM
-                cp_order_export
-            ORDER by
-                lastOrderId ASC";
-
-        $result = $sqlhandle->query($sql);
-        
-        if( $result->num_rows > 0 ) {
-            // output data of each row
-            $ui.= '<table width="100%">'
-                    . "<tr>"
-                        . "<td>id</td>"
-                        . "<td>timestamp</td>"
-                        . "<td>lastOrderId</td>"
-                        . "<td>Log</td>"
-                    . "</tr>";
-            while( $row = $result->fetch_assoc() ) {
-
-                $link_params = array(
-                    'action' => 'openfile' ,
-                    'file' => $row["id"] ,
-                    'resturl' => $_REQUEST['resturl'] ,
-                    'restuser' => $_REQUEST['restuser'] ,
-                    'restkey' => $_REQUEST['restkey']
-                );
-
-                $log_params = array(
-                    'action' => 'openlog' ,
-                    'file' => $row["id"] ,
-                    'resturl' => $_REQUEST['resturl'] ,
-                    'restuser' => $_REQUEST['restuser'] ,
-                    'restkey' => $_REQUEST['restkey']
-                );
-
-                $ui.= "<tr>"
-                        ."<td nowrap>". $row["id"] ."</td>"
-                        .'<td nowrap><a target="_blank" href="'.
-                        
-                        (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS']==='on'?"https":"http")
-                        ."://{$_SERVER['HTTP_HOST']}{$_SERVER['SCRIPT_NAME']}".'?'.http_build_query($link_params)
-
-                        .'">'. $row["timestamp"] ."</a></td>"
-                        ."<td nowrap>". $row["lastOrderId"] ."</td>"
-                        .'<td nowrap><a target="_blank" href="'.
-                        
-                        (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS']==='on'?"https":"http")
-                        ."://{$_SERVER['HTTP_HOST']}{$_SERVER['SCRIPT_NAME']}".'?'.http_build_query($log_params)
-
-                        .'">Link'."</a></td>"
-                    . "</tr>";
-                $lastid = $row["id"];
-                $lastorderid = $row["lastOrderId"];
-            }
-            $ui.= '</table>';
-
-            $link_params = array(
-                'action' => 'export' ,
-                'resturl' => $_REQUEST['resturl'] ,
-                'restuser' => $_REQUEST['restuser'] ,
-                'restkey' => $_REQUEST['restkey']
-            );
-            $ui.= '<a href="'.
-                        (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS']==='on'?"https":"http")
-                        ."://{$_SERVER['HTTP_HOST']}{$_SERVER['SCRIPT_NAME']}".'?'.http_build_query($link_params)
-                    .'"class="btn btn-primary mt-3">Start Export</a>';
-        }
-    }
-    
     if( $action == 'export' ) {
+
         /**
          * Get Data from API/Shopware
          */
-        $oOrders = $client->getOrdersWithNumberbeginId( $lastorderid );
+        // $oOrders = $client->getOrdersWithNumberbeginId( $lastorderid );
+        $oOrders = getOrdersWithNumberbeginId( $sqlhandle );
 
         if( (int)$oOrders['total']  > 0
             && $oOrders['success'] == 1 ) {
             /** 
              * Create Item in DB
              */
-            $result = $sqlhandle->query( 'INSERT INTO cp_order_export ( lastOrderId ) VALUES ( ' . $lastorderid . ' )' );
+            $result = $sqlhandle->query( 'INSERT INTO cp_order_export ( lastOrderId ) VALUES ( 1 )' );
             $resultDBid = $sqlhandle->insert_id;
+            $lastorderid = $resultDBid;
             
             if( $sqlhandle->error ) {
                 file_put_contents( $logDir . '_error.log', "stmt-Error:\n" . $sqlhandle->error . "\n", FILE_APPEND );
@@ -195,25 +129,28 @@ if( $client != false )  {
             $log.= "Orders Total: " . $oOrders['total'] . "\n";
 
             file_put_contents( $logfile, $log, FILE_APPEND );
-            echo '<h1>Export:</h1>';
-            echo '<pre>total: ' . print_r( $oOrders['total'] , true ) . '</pre>';
-            echo '<pre>success: ' . print_r( $oOrders['success'] , true ) . '</pre>';
+
+            $ui.= '<div class="col-12">';
+                $ui.= '<h1>Export:</h1>';
+                $ui.= '<pre>total: ' . print_r( $oOrders['total'] , true ) . '</pre>';
+                $ui.= '<pre>success: ' . print_r( $oOrders['success'] , true ) . '</pre>';
+            $ui.= '</div>';
 
             /**
              * create export-file
              */
             $exportFile = $exportDir . 'export_' . $resultDBid . '.csv';
             $fp = fopen( $exportFile, 'a' );
-            if( !file_exists( $exportFile ) ) {
+                fputcsv( $fp, array_fill(0, count($csvTitle), ''), $csv_sep );
                 fputcsv( $fp, $csvTitle, $csv_sep );
-            }
             file_put_contents( $logfile, "Exported File: " . $exportFile . "\n", FILE_APPEND );
 
             /** 
              * Put TitleLine to CSV-File
              */
-            foreach( $oOrders['data'] AS $orderData ) {
-                $row = json_decode( $client->get('orders/' . $orderData['id']), true );
+            foreach( $oOrders['data'] AS $orderData )
+            {
+                $row = json_decode( $client->get('orders/' . $orderData['id'] ), true );
 
                 file_put_contents( $logfile, "Start Order: " . $orderData['id']
                                             . "\n----------------------------------------\n", FILE_APPEND );
@@ -223,7 +160,8 @@ if( $client != false )  {
                     continue;
                 }
                 else {
-                    $row = $row["data"];
+                    $statusTime = $orderData['time'];  
+                    $orderData = $row["data"];
 
                     /**
                      * Mapping
@@ -235,75 +173,86 @@ if( $client != false )  {
                     }
                     
                     // $position['empty-1'] = $row["id"];
-                    $position['Bestell-ID'] = $row["number"];
-                    $position['Rechnungsdatum'] = date( 'Y.m.d H:i:s', strtotime( $row['orderTime'] ) ) ;
+                    $position['Bestell-ID'] = $orderData["number"];
+
+                    $position['Rechnungsdatum'] = date( 'Y.m.d H:i:s', strtotime( $statusTime ) );
 
                     // Billig
-                    $position['b_Firma'] = $row['billing']['company'] ? $row['billing']['company'] . ( $row['shipping']['department'] ? ' - '.$row['shipping']['department'] : '' )  : trim( $row['billing']['firstName'] . ' ' . $row['billing']['lastName'] );
-                    $position['b_Name'] = $row['billing']['lastName'];
-                    $position['b_Vorname'] = $row['billing']['firstName'];
-                    $position['b_Strasse'] = $row['billing']['street'];
-                    $position['b_PLZ'] = $row['billing']['zipCode'];
-                    $position['b_Ort'] = $row['billing']['city'];
-                    $position['b_Land'] = $row['billing']['country']['isoName'];
-                    $position['b_Telefon'] = $row['billing']['phone'];
+                    $position['b_Firma'] = $orderData['billing']['company'] ? $orderData['billing']['company'] . ( $orderData['shipping']['department'] ? ' - '.$orderData['shipping']['department'] : '' )  : trim( $orderData['billing']['firstName'] . ' ' . $orderData['billing']['lastName'] );
+                    $position['b_Name'] = $orderData['billing']['lastName'];
+                    $position['b_Vorname'] = $orderData['billing']['firstName'];
+                    $position['b_Strasse'] = $orderData['billing']['street'];
+                    $position['b_PLZ'] = $orderData['billing']['zipCode'];
+                    $position['b_Ort'] = $orderData['billing']['city'];
+                    $position['b_Land'] = $orderData['billing']['country']['isoName'];
+                    $position['b_Telefon'] = $orderData['billing']['phone'];
                     // Billig Extras
-                    $position['Mailadresse'] = $row['customer']["email"]; // OK? 
-                    $position['VAT ID'] = $row['billing']['vatId'];
-                    $position['Zahlungsart'] = $row['payment']['name'];
+                    $position['Mailadresse'] = $orderData['customer']["email"]; // OK? 
+                    $position['VAT ID'] = $orderData['billing']['vatId'];
+                    $position['Zahlungsart'] = $orderData['payment']['name'];
                     
                     // Shipping
-                    $position['s_Firma'] = $row['shipping']['company'] ? $row['shipping']['company'] . ( $row['shipping']['department'] ? ' - '.$row['shipping']['department'] : '' ) : '';
+                    $position['s_Firma'] = $orderData['shipping']['company'] ? $orderData['shipping']['company'] . ( $orderData['shipping']['department'] ? ' - '.$orderData['shipping']['department'] : '' ) : '';
 
-                    $position['b_Firma'] = $row['billing']['company'] ? $row['billing']['company'] . ( $row['shipping']['department'] ? ' - '.$row['shipping']['department'] : '' )  : trim( $row['billing']['firstName'] . ' ' . $row['billing']['lastName'] );
+                    $position['b_Firma'] = $orderData['billing']['company'] ? $orderData['billing']['company'] . ( $orderData['shipping']['department'] ? ' - '.$orderData['shipping']['department'] : '' )  : trim( $orderData['billing']['firstName'] . ' ' . $orderData['billing']['lastName'] );
 
-                    $position['s_Name'] = $row['shipping']['lastName'];
-                    $position['s_Vorname'] = $row['shipping']['firstName'];
-                    $position['s_Strasse'] = $row['shipping']['street'];
-                    $position['s_PLZ'] = $row['shipping']['zipCode'];
-                    $position['s_Ort'] = $row['shipping']['city'];
-                    $position['s_Land'] = $row['shipping']['country']['isoName'];
-                    $position['s_Telefon'] = $row['shipping']['phone'];
+
+
+                    $position['s_Name'] = $orderData['shipping']['lastName'];
+                    $position['s_Vorname'] = $orderData['shipping']['firstName'];
+                    $position['s_Strasse'] = $orderData['shipping']['street'];
+                    $position['s_PLZ'] = $orderData['shipping']['zipCode'];
+                    $position['s_Ort'] = $orderData['shipping']['city'];
+                    $position['s_Land'] = $orderData['shipping']['country']['isoName'];
+                    $position['s_Telefon'] = $orderData['shipping']['phone'];
 
                     // Basket-Product
-                    for( $details_i = 0, $details_len = count( $row['details'] ) ; $details_i < $details_len ; $details_i++ ) {
-                        $details_row = $row['details'][ $details_i ];
+                    for( $details_i = 0, $details_len = count( $orderData['details'] ) ; $details_i < $details_len ; $details_i++ ) {
+                        $details_row = $orderData['details'][ $details_i ];
 
-                        $position['p_Anzahl'] = $details_row['quantity']; // * Units in Pack
-                        $position['Projectname'] = $details_row['articleName'];
+                        $purchaseunit = $details_row['attribute']['cpSagePurchaseunit'];
+                        if( !$purchaseunit ) $purchaseunit = 1;
+
+                        $position['p_Anzahl'] = $details_row['quantity'] * $purchaseunit; // * Units in Pack
                         $position['p_Produktbezeichnung'] = $details_row['articleName'];
+                        $position['Projectname'] = $details_row['articleName'];
                         $position['p_Material'] = '';
                         $position['p_Einzelpreis'] = $details_row['price'];
                         $position['p_Summe'] = $details_row['price'];
 
+                        $position['p_Produktbezeichnung'] =  $details_row['attribute']['cpSageStockCode'];
+                        
                         /** 
                          * Put Position to CSV-File
                          */
-                        fputcsv( $fp, $position, $csv_sep );
-                        file_put_contents( $logfile, $position['p_Produktbezeichnung'] . ' ( ' . $position['p_Anzahl'] . ' )' . "\n", FILE_APPEND );
+                        if( $position['p_Produktbezeichnung'] != "" ) {
+                            fputcsv( $fp, $position, $csv_sep );
+                            file_put_contents( $logfile, $position['p_Produktbezeichnung'] . ' - ' . $position['Projectname'] . ' ( ' . $position['p_Anzahl'] . ' )' . "\n", FILE_APPEND );
+                        }
+                        else {
+                            file_put_contents( $logfile, 'No Sage ID ! - ' . $position['Projectname'] . ' ( ' . $position['p_Anzahl'] . ' )' . "\n", FILE_APPEND );
+                        }
                     }
                 }
 
-                if( $row  && array_key_exists( "id", $row ) ) {
+                if( $orderData  && array_key_exists( "id", $orderData ) ) {
                     // Update DB Item
-                    $sqlhandle->query( "UPDATE cp_order_export SET lastOrderId = " . $row["id"] . " WHERE id = " . $resultDBid . ";" );
+                    $sqlhandle->query( "UPDATE cp_order_export SET lastOrderId = " . $orderData["id"] . " WHERE id = " . $resultDBid . ";" );
                     file_put_contents( $logfile, "----------------------------------------\n\n", FILE_APPEND );
                 }
 
             }
 
-            fclose( $fp );
+            $sql = "UPDATE
+                        cp_order_status
+                    SET 
+                        status = 2
+                    WHERE
+                        status = 1";
+            $result = $sqlhandle->query( $sql );
 
-            $ui.= '<div style="overflow:scroll; height: 250px; ">'
+            fclose( $fp );
             
-            . '<table><tr><td nowrap>'
-                . str_replace( "\n", '</td></tr><tr><td nowrap>', str_replace( ";", '</td><td nowrap>', file_get_contents( substr( $exportFile, 2 ) ) ) )
-            . '</td></tr></table>'
-            
-            . '</div>';
-            $ui.= '<pre>' . print_r( $csvTitle, true ) . '</pre>';
-            $ui.= '<br><br><br>';
-            $ui.= '<pre>' . print_r( $row, true ) . '</pre>';
         }
     }
     else if( $action == 'openfile' ) {
@@ -327,8 +276,85 @@ if( $client != false )  {
         die();
     }
 
+    if( !in_array( $action, array( 'openfile' ) ) ) {
+
+        /**
+         * Get Data from DB
+         */
+        $sql = "SELECT
+                *
+            FROM
+                cp_order_export
+            ORDER by
+                id ASC";
+
+        $result = $sqlhandle->query($sql);
+        
+        if( $result->num_rows > 0 ) {
+            // output data of each row
+            $overview.= '<table width="100%">'
+                    . "<tr>"
+                        . "<td>id</td>"
+                        . "<td>timestamp</td>"
+                        // . "<td>lastOrderId</td>"
+                        . "<td>Log</td>"
+                    . "</tr>";
+            while( $row = $result->fetch_assoc() ) {
+
+                $link_params = array(
+                    'action' => 'openfile' ,
+                    'file' => $row["id"] ,
+                    'resturl' => $_REQUEST['resturl'] ,
+                    'restuser' => $_REQUEST['restuser'] ,
+                    'restkey' => $_REQUEST['restkey']
+                );
+
+                $log_params = array(
+                    'action' => 'openlog' ,
+                    'file' => $row["id"] ,
+                    'resturl' => $_REQUEST['resturl'] ,
+                    'restuser' => $_REQUEST['restuser'] ,
+                    'restkey' => $_REQUEST['restkey']
+                );
+
+                $overview.= "<tr>"
+                        ."<td nowrap>". $row["id"] ."</td>"
+                        .'<td nowrap><a target="_blank" href="'.
+                        
+                        (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS']==='on'?"https":"http")
+                        ."://{$_SERVER['HTTP_HOST']}{$_SERVER['SCRIPT_NAME']}".'?'.http_build_query($link_params)
+
+                        .'">'. $row["timestamp"] ."</a></td>"
+                        // ."<td nowrap>". $row["lastOrderId"] ."</td>"
+                        .'<td nowrap><a target="_blank" href="'.
+                        
+                        (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS']==='on'?"https":"http")
+                        ."://{$_SERVER['HTTP_HOST']}{$_SERVER['SCRIPT_NAME']}".'?'.http_build_query($log_params)
+
+                        .'">Link'."</a></td>"
+                    . "</tr>";
+                $lastid = $row["id"];
+                // $lastorderid = $row["lastOrderId"];
+            }
+            $overview.= '</table>';
+
+        }
+        
+        $link_params = array(
+            'action' => 'export' ,
+            'resturl' => $_REQUEST['resturl'] ,
+            'restuser' => $_REQUEST['restuser'] ,
+            'restkey' => $_REQUEST['restkey']
+        );
+        $overview.= '<a href="'.
+                    (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS']==='on'?"https":"http")
+                    ."://{$_SERVER['HTTP_HOST']}{$_SERVER['SCRIPT_NAME']}".'?'.http_build_query($link_params)
+                .'"class="btn btn-primary mt-3">Start Export</a>';
+    }
+    
     $tplAreas['ui'] = array();
     $tplAreas['ui'][] = $ui;
+    $tplAreas['ui'][] = $overview;
 }
 else {
     /**
@@ -337,10 +363,11 @@ else {
     $tplAreas['usersidebar'][] = '<form action="#" method="post">'
                                     . '<input name="action" value="" type="hidden">'
 
-                                        . '<div class="form-group">'
+                                        . '<!-- div class="form-group">'
                                             . '<label for="resturl">URL</label>'
                                             . '<input type="text" class="form-control" name="resturl" id="resturl" value="' . $restUrl . '" placeholder="https://.../api/">'
-                                        . '</div>'
+                                        . '</div -->'
+                                        
                                         . '<div class="form-group">'
                                             . '<label for="restuser">User</label>'
                                             . '<input type="text" class="form-control" name="restuser" id="restuser" value="' . $restUser . '" placeholder="name123">'
