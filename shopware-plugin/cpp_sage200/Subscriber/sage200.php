@@ -197,7 +197,7 @@ class sage200 implements SubscriberInterface
         $countryiso = print_r( $orderNumberSQL[0]['countryiso'], true );
         $paymentID = print_r( $orderNumberSQL[0]['paymentID'], true );
 
-        $this->copySageCode( $number );
+        $this->copySageCode( $id );
 
         if( $status == 2 || $paymentID == 5 ) {
 

@@ -88,21 +88,24 @@ if( $client != false )  {
     $overview = '';
     $ui = '';
 
+
     if( $action == 'export' ) {
 
         /**
-         * Are Orders ready for exporting?
+         * Get Data from API/Shopware
          */
-        if( ordersReadyForExport( $sqlhandle ) ) {
+        // $oOrders = $client->getOrdersWithNumberbeginId( $lastorderid );
+        $oOrders = getOrdersWithNumberbeginId( $sqlhandle );
 
+        if( (int)$oOrders['total']  > 0
+            && $oOrders['success'] == 1 ) {
             /** 
              * Create Item in DB
              */
             $result = $sqlhandle->query( 'INSERT INTO cp_order_export ( lastOrderId ) VALUES ( 1 )' );
             $resultDBid = $sqlhandle->lastInsertId();
+            $lastorderid = $resultDBid;
             
-            $oOrders = getOrdersByStatusNull( $sqlhandle, $resultDBid );
-
             if( !$result ) {
                 file_put_contents( $logDir . '_error.log', "stmt-Error:\n" . print_r( $result->errorInfo(), true ) . "\n", FILE_APPEND );
                 printf("Error: %s.<br>\n", print_r( $sqlhandle->errorInfo(), true ));
@@ -169,7 +172,6 @@ if( $client != false )  {
                         $position[$t] = '';
                     }
                     
-                    // $position['empty-1'] = $row["id"];
                     $position['Bestell-ID'] = $orderData["number"];
 
                     $position['Rechnungsdatum'] = date( 'Y.m.d H:i', strtotime( $statusTime ) );
