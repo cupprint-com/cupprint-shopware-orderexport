@@ -23,20 +23,9 @@ class ApiClient
         $this->username = $username;
         $this->apiKey = $apiKey;
         //Initializes the cURL instance
-        $this->cURL = curl_init();
-        curl_setopt($this->cURL, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($this->cURL, CURLOPT_FOLLOWLOCATION, false);
-        curl_setopt($this->cURL, CURLOPT_USERAGENT, 'Shopware ApiClient');
-        curl_setopt($this->cURL, CURLOPT_HTTPAUTH, CURLAUTH_DIGEST);
-        curl_setopt($this->cURL, CURLOPT_USERPWD, $this->username . ':' . $this->apiKey);
-        curl_setopt(
-            $this->cURL,
-            CURLOPT_HTTPHEADER,
-            ['Content-Type: application/json; charset=utf-8']
-        );
     }
 
-    public function call($url, $method = self::METHOD_GET, $data = [], $params = [])
+    public function call( $url, $method = self::METHOD_GET, $data = [], $params = [] )
     {
         if (!in_array($method, $this->validMethods)) {
             throw new Exception('Invalid HTTP-Methode: ' . $method);
@@ -48,11 +37,41 @@ class ApiClient
         $url = rtrim($url, '?') . '?';
         $url = $this->apiUrl . $url . $queryString;
         $dataString = json_encode($data);
-        curl_setopt($this->cURL, CURLOPT_URL, $url);
-        curl_setopt($this->cURL, CURLOPT_CUSTOMREQUEST, $method);
-        curl_setopt($this->cURL, CURLOPT_POSTFIELDS, $dataString);
-        $result = curl_exec($this->cURL);
-        $httpCode = curl_getinfo($this->cURL, CURLINFO_HTTP_CODE);
+
+        /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
+        $this->cURL = curl_init();
+
+        curl_setopt( $this->cURL, CURLOPT_URL, $url );
+        curl_setopt($this->cURL, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($this->cURL, CURLOPT_ENCODING, "" );
+        curl_setopt($this->cURL, CURLOPT_MAXREDIRS, 10 );
+        curl_setopt($this->cURL, CURLOPT_TIMEOUT, 30 );
+        curl_setopt($this->cURL, CURLOPT_HTTP_VERSION, CURL_HTTP_VERSION_1_1 );
+        curl_setopt( $this->cURL, CURLOPT_CUSTOMREQUEST, $method );
+        curl_setopt( $this->cURL, CURLOPT_FRESH_CONNECT, TRUE );
+        
+        # curl_setopt($this->cURL, CURLOPT_FOLLOWLOCATION, false);
+        curl_setopt($this->cURL, CURLOPT_USERAGENT, 'Shopware ApiClient');
+        curl_setopt($this->cURL, CURLOPT_HTTPAUTH, CURLAUTH_DIGEST);
+        curl_setopt($this->cURL, CURLOPT_USERPWD, $this->username . ':' . $this->apiKey);
+        curl_setopt($this->cURL, CURLOPT_HTTPHEADER, ['Content-Type: application/json; charset=utf-8'] );
+
+        curl_setopt( $this->cURL, CURLOPT_POSTFIELDS, $dataString );
+        curl_setopt( $this->cURL, CURLOPT_FRESH_CONNECT, TRUE );
+
+        $result = curl_exec( $this->cURL );
+        $httpCode = curl_getinfo( $this->cURL, CURLINFO_HTTP_CODE );
+
+        /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
+        $err = curl_error($this->cURL);
+        curl_close($this->cURL);
+        if($err){ 
+            die('<pre>'.print_r($err,true).'</pre>');
+        }
+        else if( 401 == $httpCode ) {
+            die( $result );
+        }
+        /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
 
         return $result; // $this->prepareResponse($result, $httpCode);
     }
@@ -74,6 +93,38 @@ class ApiClient
         $r = json_decode( $this->get( 'customers', $params ), true );
         
         return $r['data'][0];
+    }
+    
+    public function getUserbyUserName( $userName )
+    {
+        $params = [ 'filter' => [ [
+            'property' => 'username',
+            'expression' => '=',
+            'value' => $userName
+        ] ] ];
+
+        $r = json_decode( $this->get( 'users', $params ), true );
+        
+        return $r['data'][0];
+    }
+    
+    public function getOrdersWithNumberbeginId( $lastorderid )
+    {
+        $params = ['filter'=>[
+                        [
+                            'property' => 'id' ,
+                            'expression' => '>' ,
+                            'value' => $lastorderid
+                        ],
+                        [
+                            'property' => 'number' ,
+                            'expression' => '!=' ,
+                            'value' => 0
+                        ]
+                    ]
+                ];
+
+        return json_decode( $this->get( 'orders',$params ), true );
     }
     
     public function getArticlePricesbyArticleNo( $detailNumber )
@@ -162,7 +213,8 @@ class ApiClient
         return $decodedResult;
     }
 
-    public function getLink( $link , $action ) {
+    public function getLink( $link , $action )
+    {
         
         if( strpos( $link , '?' ) >= 0 ) {
             $link.= '&';

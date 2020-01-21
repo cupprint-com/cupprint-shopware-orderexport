@@ -25,7 +25,8 @@ function price_float( $price )
 /**
 * @return string
 */
-function redirectPage( $params ) {
+function redirectPage( $params )
+{
     $actual_link = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS']==='on'?"https":"http")."://{$_SERVER['HTTP_HOST']}{$_SERVER['SCRIPT_NAME']}".'?'.http_build_query($params);
     return '<a href = \''.$actual_link .'\'>LINK</a><script>setTimeout( function() { window.location.href = \''.$actual_link .'\'; }, 500 );</script>';
 }
@@ -44,4 +45,57 @@ function is_session_started()
     }
     
     return FALSE;
+}
+
+/**
+* @return string
+*/
+function getLink( $link = '', $action = '' )
+{
+    if( strpos( $link , '?' ) >= 0 ) {
+        $link.= '&';
+    }
+    else {
+        $link.= '?';
+    }
+
+    $link.= 'action=' . $action
+          . '&resturl=' . urlencode( $this->apiUrl ) 
+          . '&restuser=' . urlencode( $this->username ) 
+          . '&restkey=' . urlencode( $this->apiKey ) ;
+    
+    return $link;
+}
+
+function getOrdersWithNumberbeginId( $sqlhandle = NULL ) {
+    if( $sqlhandle != NULL ) {
+
+        $sql = "UPDATE
+                    cp_order_status
+                SET 
+                    status = 1
+                WHERE
+                    status = 0";
+        $result = $sqlhandle->query( $sql );
+    
+        $sql = "SELECT 
+                    *
+                FROM
+                    cp_order_status 
+                WHERE 
+                    status = 1";
+        $result = $sqlhandle->query( $sql );
+        
+        $data = array();
+        while( $row = $result->fetch_assoc() ) {
+            $row['id'] = $row['orderid'];
+            $data[] = $row;
+        }
+
+        return array(
+            'data' => $data ,
+            'total' => count( $data ) ,
+            'success' => 1
+        );
+    }
 }

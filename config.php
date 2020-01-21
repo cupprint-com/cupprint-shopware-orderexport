@@ -18,7 +18,7 @@ $restUser   = '';    // restuser
 // User's API-Key
 $restKey    = '';    // armydPzSE9lC5VfIEGeoLo9lL9mO1zrWBES6fd6g
 
-
+$_REQUEST['resturl'] = 'https://develop.cupprint.com/api/';
 
 /**
  * Login
