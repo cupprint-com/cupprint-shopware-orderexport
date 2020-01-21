@@ -88,27 +88,24 @@ if( $client != false )  {
     $overview = '';
     $ui = '';
 
-
     if( $action == 'export' ) {
 
         /**
-         * Get Data from API/Shopware
+         * Are Orders ready for exporting?
          */
-        // $oOrders = $client->getOrdersWithNumberbeginId( $lastorderid );
-        $oOrders = getOrdersWithNumberbeginId( $sqlhandle );
+        if( ordersReadyForExport( $sqlhandle ) ) {
 
-        if( (int)$oOrders['total']  > 0
-            && $oOrders['success'] == 1 ) {
             /** 
              * Create Item in DB
              */
             $result = $sqlhandle->query( 'INSERT INTO cp_order_export ( lastOrderId ) VALUES ( 1 )' );
-            $resultDBid = $sqlhandle->insert_id;
-            $lastorderid = $resultDBid;
+            $resultDBid = $sqlhandle->lastInsertId();
             
-            if( $sqlhandle->error ) {
-                file_put_contents( $logDir . '_error.log', "stmt-Error:\n" . $sqlhandle->error . "\n", FILE_APPEND );
-                printf("Error: %s.<br>\n", $sqlhandle->error);
+            $oOrders = getOrdersByStatusNull( $sqlhandle, $resultDBid );
+
+            if( !$result ) {
+                file_put_contents( $logDir . '_error.log', "stmt-Error:\n" . print_r( $result->errorInfo(), true ) . "\n", FILE_APPEND );
+                printf("Error: %s.<br>\n", print_r( $sqlhandle->errorInfo(), true ));
                 die();
             }
 
@@ -175,7 +172,12 @@ if( $client != false )  {
                     // $position['empty-1'] = $row["id"];
                     $position['Bestell-ID'] = $orderData["number"];
 
-                    $position['Rechnungsdatum'] = date( 'Y.m.d H:i:s', strtotime( $statusTime ) );
+                    $position['Rechnungsdatum'] = date( 'Y.m.d H:i', strtotime( $statusTime ) );
+
+                    $payment = $orderData['payment']['name'];
+                    if( $payment == 'prepayment' ) {
+                        $payment = 'immediately payable without deductions.';
+                    }
 
                     // Billig
                     $position['b_Firma'] = $orderData['billing']['company'] ? $orderData['billing']['company'] . ( $orderData['shipping']['department'] ? ' - '.$orderData['shipping']['department'] : '' )  : trim( $orderData['billing']['firstName'] . ' ' . $orderData['billing']['lastName'] );
@@ -189,7 +191,8 @@ if( $client != false )  {
                     // Billig Extras
                     $position['Mailadresse'] = $orderData['customer']["email"]; // OK? 
                     $position['VAT ID'] = $orderData['billing']['vatId'];
-                    $position['Zahlungsart'] = $orderData['payment']['name'];
+
+                    $position['Zahlungsart'] = $payment;
                     
                     // Shipping
                     $position['s_Firma'] = $orderData['shipping']['company'] ? $orderData['shipping']['company'] . ( $orderData['shipping']['department'] ? ' - '.$orderData['shipping']['department'] : '' ) : '';
@@ -206,32 +209,37 @@ if( $client != false )  {
                     $position['s_Land'] = $orderData['shipping']['country']['isoName'];
                     $position['s_Telefon'] = $orderData['shipping']['phone'];
 
+                    foreach( $position AS $key => $value ) {
+                        $position[$key] = str_replace( ';',',', $value );
+                    }
+
+
                     // Basket-Product
                     for( $details_i = 0, $details_len = count( $orderData['details'] ) ; $details_i < $details_len ; $details_i++ ) {
                         $details_row = $orderData['details'][ $details_i ];
-
+                        
                         $purchaseunit = $details_row['attribute']['cpSagePurchaseunit'];
                         if( !$purchaseunit ) $purchaseunit = 1;
 
                         $position['p_Anzahl'] = $details_row['quantity'] * $purchaseunit; // * Units in Pack
-                        $position['p_Produktbezeichnung'] = $details_row['articleName'];
-                        $position['Projectname'] = $details_row['articleName'];
+                        $position['p_Produktbezeichnung'] = str_replace( ';',',', $details_row['articleName'] );
+                        $position['Projectname'] = str_replace( ';',',', $details_row['articleName'] );
                         $position['p_Material'] = '';
-                        $position['p_Einzelpreis'] = $details_row['price'];
-                        $position['p_Summe'] = $details_row['price'];
+                        $position['p_Einzelpreis'] = round( $details_row['price'], 2);
+                        $position['p_Summe'] = round( $details_row['quantity'] * $details_row['price'], 2 );
 
                         $position['p_Produktbezeichnung'] =  $details_row['attribute']['cpSageStockCode'];
                         
                         /** 
                          * Put Position to CSV-File
                          */
-                        if( $position['p_Produktbezeichnung'] != "" ) {
-                            fputcsv( $fp, $position, $csv_sep );
+                        // if( $position['p_Produktbezeichnung'] != "" ) {
+                            fputcsv( $fp, $position, $csv_sep, ' ' );
                             file_put_contents( $logfile, $position['p_Produktbezeichnung'] . ' - ' . $position['Projectname'] . ' ( ' . $position['p_Anzahl'] . ' )' . "\n", FILE_APPEND );
-                        }
-                        else {
-                            file_put_contents( $logfile, 'No Sage ID ! - ' . $position['Projectname'] . ' ( ' . $position['p_Anzahl'] . ' )' . "\n", FILE_APPEND );
-                        }
+                        // }
+                        // else {
+                        //     file_put_contents( $logfile, 'No Sage ID ! - ' . $position['Projectname'] . ' ( ' . $position['p_Anzahl'] . ' )' . "\n", FILE_APPEND );
+                        // }
                     }
                 }
 
@@ -290,7 +298,7 @@ if( $client != false )  {
 
         $result = $sqlhandle->query($sql);
         
-        if( $result->num_rows > 0 ) {
+        if( $result->rowCount() > 0 ) {
             // output data of each row
             $overview.= '<table width="100%">'
                     . "<tr>"
@@ -299,7 +307,7 @@ if( $client != false )  {
                         // . "<td>lastOrderId</td>"
                         . "<td>Log</td>"
                     . "</tr>";
-            while( $row = $result->fetch_assoc() ) {
+            while( $row = $result->fetch() ) {
 
                 $link_params = array(
                     'action' => 'openfile' ,
@@ -396,7 +404,7 @@ else {
             white-space: pre;
         }
     </style>
-    <title>User Price Importer</title>
+    <title>CPP - Order Export</title>
 </head>
 <body>
 
@@ -447,4 +455,4 @@ else {
 </html>
 <?php
 
-$sqlhandle->close();
+$sqlhandle = NULL;

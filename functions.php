@@ -1,9 +1,8 @@
 <?php
 
-
 /**
-* @return float
-*/
+ * @return float
+ */
 function microtime_float()
 {
     list($usec, $sec) = explode(" ", microtime());
@@ -11,8 +10,8 @@ function microtime_float()
 }
 
 /**
-* @return float
-*/
+ * @return float
+ */
 function price_float( $price )
 {
     $price = preg_replace( '/[^0-9.,]/Uis', '', $price );
@@ -23,8 +22,8 @@ function price_float( $price )
 }
 
 /**
-* @return string
-*/
+ * @return string
+ */
 function redirectPage( $params )
 {
     $actual_link = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS']==='on'?"https":"http")."://{$_SERVER['HTTP_HOST']}{$_SERVER['SCRIPT_NAME']}".'?'.http_build_query($params);
@@ -32,8 +31,8 @@ function redirectPage( $params )
 }
 
 /**
-* @return bool
-*/
+ * @return bool
+ */
 function is_session_started()
 {
     if ( php_sapi_name() !== 'cli' ) {
@@ -48,8 +47,8 @@ function is_session_started()
 }
 
 /**
-* @return string
-*/
+ * @return string
+ */
 function getLink( $link = '', $action = '' )
 {
     if( strpos( $link , '?' ) >= 0 ) {
@@ -67,13 +66,37 @@ function getLink( $link = '', $action = '' )
     return $link;
 }
 
-function getOrdersWithNumberbeginId( $sqlhandle = NULL ) {
+/**
+ * @return int|false;
+ */
+function ordersReadyForExport( $sqlhandle = NULL ) {
+    if( $sqlhandle != NULL ) {
+        $sql = "SELECT 
+                    *
+                FROM
+                    cp_order_status 
+                WHERE 
+                    status = 1";
+        $result = $sqlhandle->query( $sql );
+
+        return $result->rowCount();
+    }
+    else {
+        return false;
+    }
+}
+
+/**
+ * @return array( data, total, success );
+ */
+function getOrdersByStatusNull( $sqlhandle = NULL, $export = 0 ) {
     if( $sqlhandle != NULL ) {
 
         $sql = "UPDATE
                     cp_order_status
                 SET 
-                    status = 1
+                    status = 1,
+                    export = ".$export."
                 WHERE
                     status = 0";
         $result = $sqlhandle->query( $sql );
@@ -87,7 +110,8 @@ function getOrdersWithNumberbeginId( $sqlhandle = NULL ) {
         $result = $sqlhandle->query( $sql );
         
         $data = array();
-        while( $row = $result->fetch_assoc() ) {
+
+        while( $row = $result->fetch() ) {
             $row['id'] = $row['orderid'];
             $data[] = $row;
         }

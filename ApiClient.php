@@ -53,8 +53,11 @@ class ApiClient
         # curl_setopt($this->cURL, CURLOPT_FOLLOWLOCATION, false);
         curl_setopt($this->cURL, CURLOPT_USERAGENT, 'Shopware ApiClient');
         curl_setopt($this->cURL, CURLOPT_HTTPAUTH, CURLAUTH_DIGEST);
-        curl_setopt($this->cURL, CURLOPT_USERPWD, $this->username . ':' . $this->apiKey);
-        curl_setopt($this->cURL, CURLOPT_HTTPHEADER, ['Content-Type: application/json; charset=utf-8'] );
+        # curl_setopt($this->cURL, CURLOPT_USERPWD, $this->username . ':' . $this->apiKey);
+        curl_setopt($this->cURL, CURLOPT_HTTPHEADER, [
+                'Content-Type: application/json; charset=utf-8',
+                'Authorization: Basic '. base64_encode( $this->username . ':' . $this->apiKey )
+            ] );
 
         curl_setopt( $this->cURL, CURLOPT_POSTFIELDS, $dataString );
         curl_setopt( $this->cURL, CURLOPT_FRESH_CONNECT, TRUE );

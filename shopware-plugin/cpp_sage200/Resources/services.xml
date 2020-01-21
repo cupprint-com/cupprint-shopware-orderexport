@@ -8,6 +8,7 @@
             <argument>%cpp_sage200.plugin_name%</argument>
             <argument>%cpp_sage200.plugin_dir%</argument>
             <argument type="service" id="shopware.plugin.cached_config_reader" />
+            <argument type="service" id="models"/>
             <tag name="shopware.event_subscriber"/>
         </service>
     </services>

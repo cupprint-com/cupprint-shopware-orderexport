@@ -18,7 +18,11 @@ $restUser   = '';    // restuser
 // User's API-Key
 $restKey    = '';    // armydPzSE9lC5VfIEGeoLo9lL9mO1zrWBES6fd6g
 
-$_REQUEST['resturl'] = 'https://develop.cupprint.com/api/';
+$_REQUEST['resturl'] = 'https://shopware.cupprint.com/api/';
+
+if( file_exists( dirname(__FILE__) . '/development.txt' ) ) {
+   $_REQUEST['resturl'] = 'https://develop.cupprint.com/api/';
+}
 
 /**
  * Login
@@ -34,13 +38,12 @@ $login = false;
  * Config
  */
 $sqlConfig = include('../config.php');
-
-$sqlhandle = new mysqli(
-    $sqlConfig['db']['host'].':'.$sqlConfig['db']['port'] ,
-    $sqlConfig['db']['username'] ,
-    $sqlConfig['db']['password'] ,
-    $sqlConfig['db']['dbname']
-);
+try {
+   $sqlhandle = new PDO("mysql:host=" . $sqlConfig['db']['host'] . ';port=' . $sqlConfig['db']['port'] . ";dbname=" . $sqlConfig['db']['dbname'], $sqlConfig['db']['username'], $sqlConfig['db']['password']);
+}
+catch(PDOException $e) {
+   echo "Connection failed: " . $e->getMessage();
+}
 
 
 /** 
