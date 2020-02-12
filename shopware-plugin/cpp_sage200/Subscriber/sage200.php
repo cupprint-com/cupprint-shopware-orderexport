@@ -55,6 +55,7 @@ class sage200 implements SubscriberInterface
     {
         return [
             'Shopware_Controllers_Backend_sKUZOOffer::saveOrderAction::after' => 'createOrdersKUZOOfferAction_after',
+            
             'Shopware_Controllers_Backend_OrderState_Notify' => 'changeOrderState',     // Notify
 
             'Shopware_Controllers_Backend_Order::saveAction::after' => 'changeOrder',     // Notify
@@ -71,16 +72,6 @@ class sage200 implements SubscriberInterface
         $request = $arguments->getSubject()->Request();
         
         if( $request->getParam('paymentId') == 5 ) {
-        
-            // $this->db->insert(
-            //     'cp_order_status',
-            //     [
-            //         'orderid'     => $request->getParam('id') ,
-            //         'orderNumber' => $request->getParam('number') ,
-            //         'status'      => '0' ,
-            //         'comment'     => 'Prepayment'
-            //         ]
-            // );
 
             $this->insert(
                     $request->getParam('id') ,
@@ -102,8 +93,6 @@ class sage200 implements SubscriberInterface
                 )
                 VALUES ( '.$orderid.', "'.$orderNumber.'", '.$status.', "'.$comment.'" )
                 ';
-
-            // $params = [ $orderid, $orderNumber, $status, $comment ];
 
             $this->db->query($sql );
         }
@@ -144,15 +133,6 @@ class sage200 implements SubscriberInterface
             // $this->orderNumber = $order->getNumber();
             // $this->order = $order;
             if( $paymentID == 5 ) {
-                    // $this->db->insert(
-                    //     'cp_order_status',
-                    //     [
-                    //         'orderid' => $orderId ,
-                    //         'orderNumber'=> $orderNo ,
-                    //         'status' => '0' ,
-                    //         'comment' => 'Prepayment'
-                    //     ]
-                    // );
                     
                     $this->insert(
                         $orderId ,
@@ -212,15 +192,6 @@ class sage200 implements SubscriberInterface
                 $comment = 'countryiso = ' . $countryiso;
             }
 
-            // $this->db->insert(
-            //     'cp_order_status',
-            //     [
-            //         'orderid' => $id ,
-            //         'orderNumber'=> $number ,
-            //         'status' => $status ,
-            //         'comment' => $comment
-            //     ]
-            // );
 
             $this->insert(
                 $id ,
@@ -228,6 +199,8 @@ class sage200 implements SubscriberInterface
                 $status ,
                 $comment
             );
+
+            // $params = [ $orderid, $orderNumber, $status, $comment ];
         }
     }
 
@@ -236,7 +209,7 @@ class sage200 implements SubscriberInterface
         if( $orderid )  {
             $sql = 'UPDATE s_order_details_attributes
                     LEFT JOIN s_order_details
-                    ON s_order_details.id = s_order_details_attributes.`detailID`
+                    ON s_order_details.id = s_order_details_attributes.detailID
                     SET cp_sage_stock_code = (
                         SELECT s_articles_attributes.cp_sage_stock_code
                             FROM s_articles_attributes
@@ -252,7 +225,7 @@ class sage200 implements SubscriberInterface
 
             $sql = 'UPDATE s_order_details_attributes
                     LEFT JOIN s_order_details
-                    ON s_order_details.id = s_order_details_attributes.`detailID`
+                    ON s_order_details.id = s_order_details_attributes.detailID
                     SET cp_sage_purchaseunit = (
                         SELECT  s_articles_details.purchaseunit
                             FROM s_articles_details
