@@ -56,47 +56,14 @@ class sage200 implements SubscriberInterface
         return [
             'Shopware_Controllers_Backend_sKUZOOffer::saveOrderAction::after' => 'createOrdersKUZOOfferAction_after',
             
+            'Shopware_Controllers_Backend_Order::saveAction::after' => 'changeOrder',     // Notify
             'Shopware_Controllers_Backend_OrderState_Notify' => 'changeOrderState',     // Notify
 
-            'Shopware_Controllers_Backend_Order::saveAction::after' => 'changeOrder',     // Notify
             'Shopware_Modules_Basket_AddArticle_Added' => 'saveSageAttr' ,              // Notify
             'Shopware_Modules_Basket_AddArticle_FilterSql' => 'readSageAttr'
         ];
     }
 
-
-
-    // Offer - Order Action (Normal)
-    public function changeOrder(\Enlight_Hook_HookArgs $arguments)
-    {
-        $request = $arguments->getSubject()->Request();
-        
-        if( $request->getParam('paymentId') == 5 ) {
-
-            $this->insert(
-                    $request->getParam('id') ,
-                    $request->getParam('number') ,
-                    0 ,
-                    'Prepayment'
-                );
-        }
-    }
-
-    public function insert( $orderid = 0, $orderNumber, $status = 0, $comment = '' ) {
-
-        $sRes = $this->db->fetchAll('SELECT orderid, orderNumber FROM cp_order_status WHERE orderNumber = ?', [$orderNumber]);
-        
-        if( !count( $sRes ) ) {
-            $sql = '
-                INSERT INTO cp_order_status (
-                    orderid, orderNumber, status, comment
-                )
-                VALUES ( '.$orderid.', "'.$orderNumber.'", '.$status.', "'.$comment.'" )
-                ';
-
-            $this->db->query($sql );
-        }
-    }
 
     // Offer - Order Action (Normal)
     public function createOrdersKUZOOfferAction_after(\Enlight_Event_EventArgs $args): void
@@ -117,31 +84,23 @@ class sage200 implements SubscriberInterface
             // Offer-Model
             $offer = $this->modelManager->find( \Shopware\CustomModels\Offer\Offer::class, $offerId ) ;
 
-            // Order-Data
+            // OrderID
             $sRes = $this->db->fetchAll('SELECT id, orderID, paymentID FROM s_offer WHERE id = ?', [$offerId]);
             $orderId = $sRes[0]['orderID']; // $orderId = $offer->getOrderID();
-            
-            $paymentID = $sRes[0]['paymentID']; // $orderId = $offer->getOrderID();
 
-            // Order-Model
-            // $order = $this->modelManager->find( \Shopware\Models\Order\Order::class, $orderNo );
-            $orderNumberSQL = $this->db->fetchAll( 'SELECT * FROM s_order WHERE id = ?', [ $orderId ] );
-            $orderNo = $orderNumberSQL[0]['ordernumber'];
-            
             $this->copySageCode( $orderId );
 
-            // $this->orderNumber = $order->getNumber();
-            // $this->order = $order;
-            if( $paymentID == 5 ) {
+            $this->exportOrder( $orderId );
                     
-                    $this->insert(
-                        $orderId ,
-                        $orderNo ,
-                        0 ,
-                        'Prepayment'
-                    );
-            }
         }
+    }
+
+    // Offer - Order Action (Normal)
+    public function changeOrder(\Enlight_Hook_HookArgs $arguments)
+    {
+        $request = $arguments->getSubject()->Request();
+        
+        $this->exportOrder( $request->getParam('id') );
     }
 
     public function changeOrderState(\Enlight_Event_EventArgs $args)
@@ -154,53 +113,99 @@ class sage200 implements SubscriberInterface
         $mail = $args->getMailname();
         $id = $args->getId();
 
-        $orderNumberSQL = $this->db->fetchAll( 'SELECT
-            s_order.id,
-            s_order.ordernumber,
-            s_order_billingaddress.countryID,
-            s_core_countries.countryiso
-        FROM
-            `s_order_billingaddress`
-        LEFT JOIN
-            s_order
-        ON
-            s_order.id = s_order_billingaddress.orderID  
-        LEFT JOIN
-            s_core_countries
-        ON
-            s_core_countries.id = s_order_billingaddress.countryID
-        WHERE
-            s_order.id = ?
-        ORDER BY
-            s_order_billingaddress.countryID DESC', [ $id ] );
-        $number = print_r( $orderNumberSQL[0]['ordernumber'], true );
-        $countryiso = print_r( $orderNumberSQL[0]['countryiso'], true );
-        $paymentID = print_r( $orderNumberSQL[0]['paymentID'], true );
 
-        $this->copySageCode( $id );
 
-        if( $status == 2 || $paymentID == 5 ) {
+    }
+
+
+    public function exportOrder($orderid){
+        $orderDetails = $this->getDetailsFromOrderid($orderid);
+
+        $ExportStatus = $this->getExportStatus( $orderDetails );
+
+        if( $ExportStatus ) {
+            $this->insert(
+                $orderDetails['id'] ,
+                $orderDetails['ordernumber'] ,
+
+                $ExportStatus['status'] ,
+                $ExportStatus['comment']
+            );
+        }
+    }
+    
+    public function getDetailsFromOrderid($orderid){
+        $orderNumberSQL = $this->db->fetchAll( '
+            SELECT
+                s_order.id,
+                s_order.ordernumber,
+                s_order.status,
+                s_order.paymentID,
+                s_order_billingaddress.countryID,
+                s_core_countries.countryiso
+            FROM
+                s_order_billingaddress
+            LEFT JOIN
+                s_order
+            ON
+                s_order.id = s_order_billingaddress.orderID  
+            LEFT JOIN
+                s_core_countries
+            ON
+                s_core_countries.id = s_order_billingaddress.countryID
+            WHERE
+                s_order.id = ?
+            ORDER BY
+                s_order_billingaddress.countryID DESC
+            ',
+            [ $orderid ] );
+        
+        return $orderNumberSQL[0]; // [ (order)id, ordernumber, status, paymentID, countryID, countryiso ]
+    }
+
+    public function getExportStatus($orderDetails){
+        $export = true;
+
+        // condition
+
+        if( $orderDetails['status'] == 2 || $orderDetails['paymentID'] == 5 ) {
 
             $status = 0;
-            $comment = '';
+            $comment = [];
 
             if( $paymentID == 5 ) {
-                $comment = 'Prepayment';
+                $comment[] = '"Payment":"Prepayment"';
             }
-            if( in_array( $countryiso, array('AT','DE','CH') ) ) {
+
+            $comment[] = '"countryiso":"' . $orderDetails['countryiso'].'"';
+            if( in_array( $orderDetails['countryiso'], array('AT','DE','CH') ) ) {
                 $status = 3;
-                $comment = 'countryiso = ' . $countryiso;
             }
 
+            return [ 
+                'status' => $status ,
+                'comment' => '{'.str_replace('"','\"',implode(',',$comment)).'}'
+            ];
+        }
 
-            $this->insert(
-                $id ,
-                $number ,
-                $status ,
-                $comment
-            );
+        return false;
+    }
+
+    public function insert( $orderid = 0, $orderNumber, $status = 0, $comment = '' ) {
+
+        $sRes = $this->db->fetchAll('SELECT orderid, orderNumber FROM cp_order_status WHERE orderNumber = ?', [$orderNumber]);
+        
+        if( !count( $sRes ) ) {
+            $sql = '
+                INSERT INTO cp_order_status (
+                    orderid, orderNumber, status, comment
+                )
+                VALUES ( '.$orderid.', "'.$orderNumber.'", '.$status.', "'.$comment.'" )
+                ';
 
             // $params = [ $orderid, $orderNumber, $status, $comment ];
+
+            $this->db->query($sql );
         }
     }
 
