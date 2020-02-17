@@ -66,13 +66,37 @@ function getLink( $link = '', $action = '' )
     return $link;
 }
 
-function getOrdersWithNumberbeginId( $sqlhandle = NULL ) {
+/**
+ * @return int|false;
+ */
+function ordersReadyForExport( $sqlhandle = NULL ) {
+    if( $sqlhandle != NULL ) {
+        $sql = "SELECT 
+                    *
+                FROM
+                    cp_order_status 
+                WHERE 
+                    status = 0";
+        $result = $sqlhandle->query( $sql );
+
+        return $result->rowCount();
+    }
+    else {
+        return false;
+    }
+}
+
+/**
+ * @return array( data, total, success );
+ */
+function getOrdersByStatusNull( $sqlhandle = NULL, $export = 0 ) {
     if( $sqlhandle != NULL ) {
 
         $sql = "UPDATE
                     cp_order_status
                 SET 
-                    status = 1
+                    status = 1,
+                    exportid = ".$export."
                 WHERE
                     status = 0";
         $result = $sqlhandle->query( $sql );

@@ -92,20 +92,17 @@ if( $client != false )  {
     if( $action == 'export' ) {
 
         /**
-         * Get Data from API/Shopware
+         * Are Orders ready for exporting?
          */
-        // $oOrders = $client->getOrdersWithNumberbeginId( $lastorderid );
-        $oOrders = getOrdersWithNumberbeginId( $sqlhandle );
-
-        if( (int)$oOrders['total']  > 0
-            && $oOrders['success'] == 1 ) {
+        if( ordersReadyForExport( $sqlhandle ) > 0 ) {
             /** 
              * Create Item in DB
              */
             $result = $sqlhandle->query( 'INSERT INTO cp_order_export ( lastOrderId ) VALUES ( 1 )' );
             $resultDBid = $sqlhandle->lastInsertId();
-            $lastorderid = $resultDBid;
             
+            $oOrders = getOrdersByStatusNull( $sqlhandle, $resultDBid );
+
             if( !$result ) {
                 file_put_contents( $logDir . '_error.log', "stmt-Error:\n" . print_r( $result->errorInfo(), true ) . "\n", FILE_APPEND );
                 printf("Error: %s.<br>\n", print_r( $sqlhandle->errorInfo(), true ));
@@ -296,24 +293,24 @@ if( $client != false )  {
             FROM
                 cp_order_export
             ORDER by
-                id ASC";
+                id DESC";
 
         $result = $sqlhandle->query($sql);
         
         if( $result->rowCount() > 0 ) {
             // output data of each row
-            $overview.= '<table width="100%">'
-                    . "<tr>"
-                        . "<td>id</td>"
-                        . "<td>timestamp</td>"
-                        // . "<td>lastOrderId</td>"
-                        . "<td>Log</td>"
-                    . "</tr>";
+            $overview.= '<div class="col-12" style="max-height:240px; overflow:auto;"><table width="100%">'
+                    . '<tr>'
+                        . '<th>Export</th>'
+                        . '<th width="180">timestamp</th>'
+                        . '<th width="100">Download</th>'
+                        . '<th width="100">Log</th>'
+                    . '</tr>';
             while( $row = $result->fetch() ) {
 
                 $link_params = array(
                     'action' => 'openfile' ,
-                    'file' => $row["id"] ,
+                    'file' => $row['id'] ,
                     'resturl' => $_REQUEST['resturl'] ,
                     'restuser' => $_REQUEST['restuser'] ,
                     'restkey' => $_REQUEST['restkey']
@@ -321,32 +318,71 @@ if( $client != false )  {
 
                 $log_params = array(
                     'action' => 'openlog' ,
-                    'file' => $row["id"] ,
+                    'file' => $row['id'] ,
                     'resturl' => $_REQUEST['resturl'] ,
                     'restuser' => $_REQUEST['restuser'] ,
                     'restkey' => $_REQUEST['restkey']
                 );
 
-                $overview.= "<tr>"
-                        ."<td nowrap>". $row["id"] ."</td>"
-                        .'<td nowrap><a target="_blank" href="'.
-                        
-                        (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS']==='on'?"https":"http")
-                        ."://{$_SERVER['HTTP_HOST']}{$_SERVER['SCRIPT_NAME']}".'?'.http_build_query($link_params)
+                $overview.= '<tr>'
+                        . '<td nowrap>'
+                            . '<h4>'
+                            
+                            
+                            . '<a target="_blank" href="'
+                            
+                            . (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS']==='on'?"https":"http")
+                            . "://{$_SERVER['HTTP_HOST']}{$_SERVER['SCRIPT_NAME']}".'?'.http_build_query($link_params)
+                            . '">'
+                            .'Export ' . $row["id"]
+                            .'</a>'
+                            . '</h4>';
 
-                        .'">'. $row["timestamp"] ."</a></td>"
-                        // ."<td nowrap>". $row["lastOrderId"] ."</td>"
-                        .'<td nowrap><a target="_blank" href="'.
-                        
-                        (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS']==='on'?"https":"http")
-                        ."://{$_SERVER['HTTP_HOST']}{$_SERVER['SCRIPT_NAME']}".'?'.http_build_query($log_params)
+                $sql2 = 'SELECT
+                            *
+                        FROM
+                            cp_order_status
+                        LEFT JOIN
+                            s_order_billingaddress
+                        ON s_order_billingaddress.orderID = cp_order_status.orderid
 
-                        .'">Link'."</a></td>"
-                    . "</tr>";
+                        WHERE 
+                            exportid = ' .$row['id'] . '';
+
+                $result2 = $sqlhandle->query($sql2);
+                
+                $overview.= '<ol>';
+                while( $row2 = $result2->fetch() ) {
+                    $overview.= '<li>' . htmlentities( $row2['orderNumber'] . ' - ' . $row2['company'] . ' (' . $row2['customernumber'] . ') - ' . $row2['firstname'] . ' ' . $row2['lastname'] . ' - ' . $row2['city'] ) . '</li>';
+                }
+                $overview.= '</ol>';
+
+                $overview.= '</td>'
+                        . '<td nowrap>'
+                            . 
+                            date( 'd.m.Y H:i', strtotime( $row["timestamp"] ) )
+                            
+                            
+                        . '</td>'
+                        . '<td nowrap>'
+                            . '<a target="_blank" href="'
+                            . (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS']==='on'?"https":"http")
+                            . "://{$_SERVER['HTTP_HOST']}{$_SERVER['SCRIPT_NAME']}".'?'.http_build_query($link_params)
+                            . '">'
+                                .'Download'
+                            .'</a>'
+                        . '</td>'
+                        .'<td nowrap>'
+                            . '<a target="_blank" href="'.
+                            (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS']==='on'?"https":"http")
+                            .'://' . $_SERVER['HTTP_HOST'] . $_SERVER['SCRIPT_NAME'] . '?' . http_build_query( $log_params )
+                            .'">Show Log'.'</a>'
+                        . '</td>'
+                    . '</tr>';
                 $lastid = $row["id"];
-                // $lastorderid = $row["lastOrderId"];
+                // $resultDBid = $row["lastOrderId"];
             }
-            $overview.= '</table>';
+            $overview.= '</table></div>';
 
         }
         
@@ -356,10 +392,59 @@ if( $client != false )  {
             'restuser' => $_REQUEST['restuser'] ,
             'restkey' => $_REQUEST['restkey']
         );
-        $overview.= '<a href="'.
-                    (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS']==='on'?"https":"http")
-                    ."://{$_SERVER['HTTP_HOST']}{$_SERVER['SCRIPT_NAME']}".'?'.http_build_query($link_params)
-                .'"class="btn btn-primary mt-3">Start Export</a>';
+
+        $sqlopen = 'SELECT
+                    *
+                FROM cp_order_status
+                LEFT JOIN s_order_billingaddress
+                ON s_order_billingaddress.orderID = cp_order_status.orderid
+                WHERE status = 0';
+
+        $resultopen = $sqlhandle->query($sqlopen);
+
+        if( $resultopen->rowCount() > 0 ) {
+            $overview.= '</div><div class="row" style="background: #f0fcf0;">';
+            $overview.= '<div class="col-12"></p><h4>Orders ready for export:</h4></div>';
+            
+            $overview.= '<div class="col-12"><ol>';
+            while( $rowopen = $resultopen->fetch() ) {
+                $overview.= '<li>' . htmlentities( $rowopen['orderNumber'] . ' - ' . $rowopen['company'] . ' (' . $rowopen['customernumber'] . ') - ' . $rowopen['firstname'] . ' ' . $rowopen['lastname'] . ' - ' . $rowopen['city'] ) . '</li>';
+            }
+            $overview.= '</ol></div>';
+
+            $overview.= '<div class="col-12"><p><a href="'.
+                        (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS']==='on'?"https":"http")
+                        ."://{$_SERVER['HTTP_HOST']}{$_SERVER['SCRIPT_NAME']}".'?'.http_build_query($link_params)
+                    .'"class="btn btn-primary mt-3">Start Export</a></p></div>';
+        }
+
+
+        $sqlopen = 'SELECT
+                    *
+                FROM cp_order_status
+                LEFT JOIN s_order_billingaddress
+                ON s_order_billingaddress.orderID = cp_order_status.orderid
+                WHERE status = 3 ORDER BY cp_order_status.id DESC LIMIT 10';
+
+        $resultopen = $sqlhandle->query($sqlopen);
+
+        $overview.= '</div><div class="row">';
+        $overview.= '<div class="col-12"></p><h4>Last 25 blocked Orders:</h4></div>';
+        
+        $overview.= '<div class="col-12" style="max-height:240px; overflow:auto;"><ol>';
+        while( $rowopen = $resultopen->fetch() ) {
+            $overview.= '<li>' 
+                . htmlentities( $rowopen['orderNumber'] . ' - ' . $rowopen['company'] . ' (' . $rowopen['customernumber'] . ') - ' . $rowopen['firstname'] . ' ' . $rowopen['lastname'] . ' - ' . $rowopen['city'], ENT_COMPAT,'ISO-8859-1', true  )
+                . '<br>' . $rowopen['comment']
+            . '</li>';
+        }
+        $overview.= '</ol></div>';
+
+
+
+
+
+        
     }
     
     $tplAreas['ui'] = array();
@@ -404,6 +489,10 @@ else {
             width: 100%;
             overflow-y: auto;
             white-space: pre;
+        }
+
+        td {
+            vertical-align: top;
         }
     </style>
     <title>CPP - Order Export</title>
